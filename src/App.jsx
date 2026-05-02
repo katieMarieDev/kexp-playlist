@@ -175,7 +175,7 @@ const ROTATION_DESC = {
   'Library': 'In the archive, not in active rotation. A deliberate DJ pick.',
 }
 
-function Stats({ rows, activeRotation, onRotationClick }) {
+function Stats({ rows, activeRotation, onRotationClick, activeFlags, onFlagToggle }) {
   const trackRows = rows.filter(r => r.artist)
   const uniqueArtists = new Set(trackRows.map(r => r.artist)).size
   const countMap = trackRows.reduce((acc, r) => { acc[r.artist] = (acc[r.artist] ?? 0) + 1; return acc }, {})
@@ -199,9 +199,20 @@ function Stats({ rows, activeRotation, onRotationClick }) {
       <div className="stats-grid">
         <div className="stat"><span className="stat-num">{trackRows.length}</span><span>Total tracks</span></div>
         <div className="stat"><span className="stat-num">{uniqueArtists}</span><span>Unique artists</span></div>
-        <div className="stat"><span className="stat-num">{trackRows.filter(r => r.local).length}</span><span>Local artists</span></div>
-        <div className="stat"><span className="stat-num">{trackRows.filter(r => r.live).length}</span><span>Live performances</span></div>
-        <div className="stat"><span className="stat-num">{trackRows.filter(r => r.request).length}</span><span>Listener requests</span></div>
+        {[
+          { key: 'local',   label: 'Local artists',       count: trackRows.filter(r => r.local).length },
+          { key: 'live',    label: 'Live performances',   count: trackRows.filter(r => r.live).length },
+          { key: 'request', label: 'Listener requests',   count: trackRows.filter(r => r.request).length },
+        ].map(({ key, label, count }) => (
+          <button
+            key={key}
+            className={`stat stat-toggle${activeFlags[key] ? ' stat-toggle-active' : ''}${count === 0 ? ' stat-toggle-empty' : ''}`}
+            onClick={() => count > 0 && onFlagToggle(key)}
+          >
+            <span className="stat-num">{count}</span>
+            <span>{label}</span>
+          </button>
+        ))}
       </div>
 
       {rotationEntries.length > 0 && (
@@ -244,9 +255,16 @@ function Stats({ rows, activeRotation, onRotationClick }) {
 function PlayTable({ rows, csvName }) {
   const [filter, setFilter] = useState('')
   const [activeRotation, setActiveRotation] = useState(null)
+  const [activeFlags, setActiveFlags] = useState({ local: false, live: false, request: false })
+
+  const toggleFlag = key => setActiveFlags(f => ({ ...f, [key]: !f[key] }))
+
   const q = filter.toLowerCase()
   const displayed = rows
     .filter(r => !activeRotation || r.rotation === activeRotation)
+    .filter(r => !activeFlags.local   || r.local)
+    .filter(r => !activeFlags.live    || r.live)
+    .filter(r => !activeFlags.request || r.request)
     .filter(r => !q || [r.artist, r.song, r.album].some(v => v.toLowerCase().includes(q)))
 
   return (
@@ -279,7 +297,7 @@ function PlayTable({ rows, csvName }) {
         />
       </div>
 
-      <Stats rows={rows} activeRotation={activeRotation} onRotationClick={setActiveRotation} />
+      <Stats rows={rows} activeRotation={activeRotation} onRotationClick={setActiveRotation} activeFlags={activeFlags} onFlagToggle={toggleFlag} />
 
       <div className="table-wrap">
         <table>
