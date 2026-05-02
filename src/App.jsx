@@ -36,15 +36,13 @@ function proxyUrl(url) {
   return url.replace('https://api.kexp.org', '/api')
 }
 
-async function fetchAllPlays({ beginDate, endDate, hostName, programId }, onProgress) {
-  // The API ignores time params — we filter client-side and stop once past beginDate.
+async function fetchAllPlays({ beginDate, endDate, programId, showIds }, onProgress) {
   const plays = []
   let offset = 0
   let page = 1
 
   while (true) {
     const params = new URLSearchParams({ play_type: 'trackplay', limit: 100, offset })
-    if (hostName) params.set('host_name', hostName)
     if (programId) params.set('program', programId)
 
     const resp = await fetch(`/api/v2/plays/?${params}`)
@@ -57,7 +55,7 @@ async function fetchAllPlays({ beginDate, endDate, hostName, programId }, onProg
     for (const play of results) {
       const airdate = new Date(play.airdate)
       if ((!endDate || airdate <= endDate) && (!beginDate || airdate >= beginDate)) {
-        plays.push(play)
+        if (!showIds || showIds.has(play.show)) plays.push(play)
       }
     }
 
@@ -71,6 +69,28 @@ async function fetchAllPlays({ beginDate, endDate, hostName, programId }, onProg
   }
 
   return plays
+}
+
+async function fetchShowIdsForHost(hostName, beginDate, endDate, onProgress) {
+  // Shows are newest-first. Collect IDs where host_names includes hostName.
+  const showIds = new Set()
+  let offset = 0
+  while (true) {
+    const params = new URLSearchParams({ limit: 100, offset, ordering: '-start_time' })
+    const resp = await fetch(`/api/v2/shows/?${params}`)
+    if (!resp.ok) break
+    const data = await resp.json()
+    const results = data.results ?? []
+    if (!results.length) break
+    for (const show of results) {
+      if (show.host_names?.includes(hostName)) showIds.add(show.id)
+    }
+    onProgress(showIds.size)
+    const lastStart = new Date(results[results.length - 1].start_time)
+    if (!data.next || lastStart < beginDate) break
+    offset += 100
+  }
+  return showIds
 }
 
 async function fetchCurrentShow() {
@@ -445,11 +465,27 @@ export default function App() {
     setMode(id); setRows(null); setError(null); setStatus(null)
   }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    if (mode === 'window') run({ beginDate: pacificLocalToDate(begin), endDate: pacificLocalToDate(end) })
-    if (mode === 'dj')     run({ beginDate: pacificLocalToDate(djBegin), endDate: pacificLocalToDate(djEnd), hostName: selectedHost })
-    if (mode === 'program') run({ beginDate: pacificLocalToDate(progBegin), endDate: pacificLocalToDate(progEnd), programId: selectedProgram })
+    if (mode === 'window') {
+      run({ beginDate: pacificLocalToDate(begin), endDate: pacificLocalToDate(end) })
+    }
+    if (mode === 'dj') {
+      const beginDate = pacificLocalToDate(djBegin)
+      const endDate   = pacificLocalToDate(djEnd)
+      setLoading(true); setError(null); setRows(null); setStatus('Finding shows for this host…')
+      try {
+        const showIds = await fetchShowIdsForHost(selectedHost, beginDate, endDate, n =>
+          setStatus(`Finding shows… ${n} found so far`)
+        )
+        run({ beginDate, endDate, showIds })
+      } catch (err) {
+        setError(err.message); setLoading(false); setStatus(null)
+      }
+    }
+    if (mode === 'program') {
+      run({ beginDate: pacificLocalToDate(progBegin), endDate: pacificLocalToDate(progEnd), programId: selectedProgram })
+    }
   }
 
   const curBegin = mode === 'window' ? begin : mode === 'dj' ? djBegin : progBegin
