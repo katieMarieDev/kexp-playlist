@@ -97,6 +97,25 @@ header p {
   margin-bottom: 1.5rem;
 }
 
+.now-show {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  flex-wrap: wrap;
+}
+
+.now-show-program {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #FBAD18;
+}
+
+.now-show-hosts {
+  font-size: 0.9rem;
+  color: #aaa;
+}
+
 .now-controls {
   display: flex;
   align-items: flex-end;
@@ -278,9 +297,40 @@ header p {
   padding: 0.25rem 0.75rem;
   font-size: 0.8rem;
   letter-spacing: 0.03em;
+  cursor: pointer;
+  font-family: inherit;
+  transition: opacity 0.15s, box-shadow 0.15s;
 }
 
+.rotation-pill:hover { opacity: 0.85; }
+.rotation-pill-active { box-shadow: 0 0 0 2px currentColor; }
 .rotation-pill strong { margin-left: 0.3rem; }
+
+[data-tooltip] {
+  position: relative;
+  cursor: default;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #2a2a2a;
+  color: #e8e8e8;
+  border: 1px solid #444;
+  border-radius: 5px;
+  padding: 0.4rem 0.7rem;
+  font-size: 0.78rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+  z-index: 10;
+}
+
+[data-tooltip]:hover::after { opacity: 1; }
 
 /* Album art */
 .art-th { width: 48px; }

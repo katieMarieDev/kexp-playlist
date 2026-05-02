@@ -73,6 +73,13 @@ async function fetchAllPlays({ beginDate, endDate, hostName, programId }, onProg
   return plays
 }
 
+async function fetchCurrentShow() {
+  const resp = await fetch('/api/v2/shows/?limit=1&ordering=-start_time')
+  if (!resp.ok) return null
+  const data = await resp.json()
+  return data.results?.[0] ?? null
+}
+
 async function loadHosts() {
   const resp = await fetch('/api/v2/hosts/?is_active=true&limit=200&ordering=name')
   if (!resp.ok) throw new Error('Failed to load hosts')
@@ -160,7 +167,15 @@ const ROTATION_STYLE = {
   'R/N':     { bg: '#1a0a2a', color: '#cc88ff', border: '#cc88ff44' },
 }
 
-function Stats({ rows }) {
+const ROTATION_DESC = {
+  'Heavy':   'Major new releases, played most frequently',
+  'Medium':  'Played regularly as part of active rotation',
+  'Light':   'Played occasionally',
+  'R/N':     'Record of Note: a highlighted release hand-picked by staff',
+  'Library': 'In the archive, not in active rotation. A deliberate DJ pick.',
+}
+
+function Stats({ rows, activeRotation, onRotationClick }) {
   const trackRows = rows.filter(r => r.artist)
   const uniqueArtists = new Set(trackRows.map(r => r.artist)).size
   const countMap = trackRows.reduce((acc, r) => { acc[r.artist] = (acc[r.artist] ?? 0) + 1; return acc }, {})
@@ -193,10 +208,17 @@ function Stats({ rows }) {
         <div className="rotation-pills">
           {rotationEntries.map(k => {
             const s = ROTATION_STYLE[k] ?? { bg: '#1a1a1a', color: '#888', border: '#44444444' }
+            const isActive = activeRotation === k
             return (
-              <span key={k} className="rotation-pill" style={{ background: s.bg, color: s.color, borderColor: s.border }}>
+              <button
+                key={k}
+                className={`rotation-pill${isActive ? ' rotation-pill-active' : ''}`}
+                style={{ background: s.bg, color: s.color, borderColor: isActive ? s.color : s.border }}
+                data-tooltip={ROTATION_DESC[k]}
+                onClick={() => onRotationClick(isActive ? null : k)}
+              >
                 {k} <strong>{rotationCounts[k]}</strong>
-              </span>
+              </button>
             )
           })}
         </div>
@@ -221,10 +243,11 @@ function Stats({ rows }) {
 
 function PlayTable({ rows, csvName }) {
   const [filter, setFilter] = useState('')
+  const [activeRotation, setActiveRotation] = useState(null)
   const q = filter.toLowerCase()
-  const displayed = q
-    ? rows.filter(r => [r.artist, r.song, r.album].some(v => v.toLowerCase().includes(q)))
-    : rows
+  const displayed = rows
+    .filter(r => !activeRotation || r.rotation === activeRotation)
+    .filter(r => !q || [r.artist, r.song, r.album].some(v => v.toLowerCase().includes(q)))
 
   return (
     <>
@@ -256,7 +279,7 @@ function PlayTable({ rows, csvName }) {
         />
       </div>
 
-      <Stats rows={rows} />
+      <Stats rows={rows} activeRotation={activeRotation} onRotationClick={setActiveRotation} />
 
       <div className="table-wrap">
         <table>
@@ -348,6 +371,8 @@ export default function App() {
   const [progBegin, setProgBegin] = useState(`${weekAgo}T00:00`)
   const [progEnd,   setProgEnd]   = useState(`${today}T23:59`)
 
+  const [currentShow, setCurrentShow] = useState(null)
+
   const [csvName, setCsvName] = useState('kexp_playlist')
   const [status,  setStatus]  = useState(null)
   const [rows,    setRows]    = useState(null)
@@ -388,6 +413,7 @@ export default function App() {
     }
     if (mode === 'now') {
       run({ beginDate: new Date(Date.now() - 3_600_000), endDate: new Date() })
+      fetchCurrentShow().then(setCurrentShow)
     }
   }, [mode])
 
@@ -443,6 +469,14 @@ export default function App() {
 
       {mode === 'now' ? (
         <div className="now-panel">
+          {currentShow && (
+            <div className="now-show">
+              <span className="now-show-program">{currentShow.program_name}</span>
+              {currentShow.host_names?.length > 0 && (
+                <span className="now-show-hosts">with {currentShow.host_names.join(' & ')}</span>
+              )}
+            </div>
+          )}
           <div className="now-controls">
             <span className="now-label">Last hour of plays on KEXP</span>
             <div className="field">
@@ -450,7 +484,10 @@ export default function App() {
               <input type="text" value={csvName} onChange={e => setCsvName(e.target.value)} placeholder="kexp_now" />
             </div>
             <button
-              onClick={() => run({ beginDate: new Date(Date.now() - 3_600_000), endDate: new Date() })}
+              onClick={() => {
+                run({ beginDate: new Date(Date.now() - 3_600_000), endDate: new Date() })
+                fetchCurrentShow().then(setCurrentShow)
+              }}
               disabled={loading}
               className="refresh-btn"
             >
